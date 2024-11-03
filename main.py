@@ -39,7 +39,7 @@ def extract_data_from_article(url):
 
     # Ekstrakcja nazw artykułów z odnośników wewnętrznych
     article_links = soup.find_all('a', href=re.compile("^/wiki/[^:#]+$"))
-    article_names = [link.get_text() for link in article_links[:5] if link.get_text()]
+    article_names = [link.get_text().strip() for link in article_links[:5] if link.get_text().strip()]
 
     # Ekstrakcja URL obrazków
     images = soup.find_all('img', src=True)
@@ -51,7 +51,7 @@ def extract_data_from_article(url):
 
     # Ekstrakcja kategorii przypisanych do artykułu
     categories = soup.find_all('a', href=re.compile("^/wiki/Kategoria:"))
-    category_names = [category.get_text() for category in categories[:3] if category.get_text()]
+    category_names = [category.get_text().strip() for category in categories[:3] if category.get_text().strip()]
 
     return {
         "article_names": article_names,
