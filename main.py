@@ -1,94 +1,84 @@
-import urllib.request
+import requests
+from bs4 import BeautifulSoup
 import re
-from urllib.parse import unquote
 
-def pobierz_tresc_strony(url):
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as fp:
-            tbytes = fp.read()
-        txt = tbytes.decode('utf-8')
-        return txt
-    except Exception as e:
-        print(f"Błąd podczas pobierania treści strony: {e}")
-        return ""
+# Funkcja do pobierania HTML danej strony z odpowiednim nagłówkiem User-Agent
+def get_html(url):
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.text
+    else:
+        print(f"Błąd podczas pobierania strony {url}: {response.status_code}")
+        return None
 
-# Funkcja do wyciągania linków wewnętrznych z artykułu
-def wyciagnij_linki_wewnetrzne(tresc, limit=5):
-    linki_wewn = []
-    try:
-        for link in re.findall(r'<a href="/wiki/([^":#]+)"', tresc):
-            if ":" in link:  # Pomijanie linków do innych przestrzeni nazw
-                continue
-            linki_wewn.append(unquote(link).replace('_', ' '))
-            if len(linki_wewn) >= limit:
-                break
-    except Exception as e:
-        print(f"Błąd podczas wyciągania linków wewnętrznych: {e}")
-    return linki_wewn
+# Funkcja do ekstrakcji artykułów z kategorii Wikipedii
+def extract_articles_from_category(category):
+    base_url = "https://pl.wikipedia.org/wiki/Kategoria:"
+    category_url = base_url + category.replace(" ", "_")
+    html = get_html(category_url)
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        # Szukamy odnośników do artykułów w kategorii
+        article_links = soup.find_all('a', href=re.compile("^/wiki/[^:]+$"))
+        articles = []
+        for link in article_links[:2]:  # Pobieramy pierwsze 2 unikalne artykuły
+            url_article = "https://pl.wikipedia.org" + link['href']
+            if url_article not in articles:
+                articles.append(url_article)
+        return articles
+    return []
 
-# Funkcja do wyciągania URL-ów obrazków
-def wyciagnij_url_obrazkow(tresc, limit=3):
-    obrazki = []
-    try:
-        obrazki = re.findall(r'//upload\.wikimedia\.org[^"]+', tresc)
-    except Exception as e:
-        print(f"Błąd podczas wyciągania URL-ów obrazków: {e}")
-    return obrazki[:limit]
+# Funkcja do ekstrakcji danych z artykułu
+def extract_data_from_article(url):
+    html = get_html(url)
+    if not html:
+        return None
 
-# Funkcja do wyciągania URL-ów źródeł zewnętrznych
-def wyciagnij_url_zrodel(tresc, limit=3):
-    zrodla = []
-    try:
-        zrodla = re.findall(r'href="(http[^"]+)"', tresc)
-    except Exception as e:
-        print(f"Błąd podczas wyciągania URL-ów źródeł: {e}")
-    return zrodla[:limit]
+    soup = BeautifulSoup(html, 'html.parser')
 
-# Funkcja do wyciągania nazw kategorii
-def wyciagnij_kategorie(tresc, limit=3):
-    kategorie = []
-    try:
-        kategorie = re.findall(r'title="Kategoria:([^"]+)"', tresc)
-    except Exception as e:
-        print(f"Błąd podczas wyciągania kategorii: {e}")
-    return kategorie[:limit]
+    # Ekstrakcja nazw artykułów z odnośników wewnętrznych
+    article_links = soup.find_all('a', href=re.compile("^/wiki/[^:#]+$"))
+    article_names = [link.get_text() for link in article_links[:5] if link.get_text()]
 
-# Pobranie nazwy kategorii od użytkownika
-kat = input("Podaj nazwę kategorii w polskojęzycznej Wikipedii: ")
+    # Ekstrakcja URL obrazków
+    images = soup.find_all('img', src=True)
+    image_urls = ["https:" + img['src'] for img in images[:3] if img['src'].startswith("//upload.wikimedia.org")]
 
-# Budowanie URL do kategorii
-url_kategorii = "https://pl.wikipedia.org/wiki/Kategoria:" + kat.replace(" ", "_")
+    # Ekstrakcja źródeł zewnętrznych (odnośniki zewnętrzne)
+    external_links = soup.find_all('a', href=re.compile("^https?://"))
+    external_urls = [link['href'] for link in external_links[:3] if link['href']]
 
-# Pobranie i analiza treści strony kategorii
-tresc_kategorii = pobierz_tresc_strony(url_kategorii)
-adresy_artykulow = re.findall(r'<a href="/wiki/([^":#]+)"', tresc_kategorii)
-adresy_artykulow = list(dict.fromkeys(adresy_artykulow))  # Usunięcie duplikatów
+    # Ekstrakcja kategorii przypisanych do artykułu
+    categories = soup.find_all('a', href=re.compile("^/wiki/Kategoria:"))
+    category_names = [category.get_text() for category in categories[:3] if category.get_text()]
 
-# Pobranie i analiza pierwszych dwóch artykułów
-wyniki = []
-for i, adres in enumerate(adresy_artykulow[:2]):
-    url_artykulu = "https://pl.wikipedia.org/wiki/" + adres
-    tresc_artykulu = pobierz_tresc_strony(url_artykulu)
+    return {
+        "article_names": article_names,
+        "image_urls": image_urls,
+        "external_urls": external_urls,
+        "category_names": category_names
+    }
 
-    # Wyciąganie danych
-    linki_wewn = wyciagnij_linki_wewnetrzne(tresc_artykulu)
-    url_obrazkow = wyciagnij_url_obrazkow(tresc_artykulu)
-    url_zrodel = wyciagnij_url_zrodel(tresc_artykulu)
-    kategorie = wyciagnij_kategorie(tresc_artykulu)
+# Funkcja główna wykonująca zadanie
+def main():
+    category = input("Podaj nazwę kategorii Wikipedii: ")
+    articles = extract_articles_from_category(category)
 
-    wyniki.append({
-        "artykul": adres.replace('_', ' '),
-        "linki_wewnetrzne": linki_wewn,
-        "url_obrazkow": url_obrazkow,
-        "url_zrodel": url_zrodel,
-        "kategorie": kategorie
-    })
+    if not articles:
+        print("Nie znaleziono artykułów w tej kategorii lub wystąpił błąd.")
+        return
 
-# Wyświetlanie wyników
-for wynik in wyniki:
-    print("\nArtykuł:", wynik["artykul"])
-    print("Linki wewnętrzne:", wynik["linki_wewnetrzne"])
-    print("URL obrazków:", wynik["url_obrazkow"])
-    print("URL źródeł:", wynik["url_zrodel"])
-    print("Kategorie:", wynik["kategorie"])
+    for article_url in articles:
+        print(f"\nDane dla artykułu: {article_url}")
+        data = extract_data_from_article(article_url)
+        if data:
+            print("Nazwy artykułów (odn. wewnętrzne):", data['article_names'])
+            print("Adresy URL obrazków:", data['image_urls'])
+            print("Adresy URL źródeł (zewnętrzne):", data['external_urls'])
+            print("Kategorie:", data['category_names'])
+        else:
+            print("Nie udało się pobrać danych z artykułu.")
+
+if __name__ == "__main__":
+    main()
