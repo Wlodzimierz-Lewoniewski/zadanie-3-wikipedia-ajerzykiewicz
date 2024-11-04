@@ -27,6 +27,7 @@ def wyszukaj_kategorie():
                 odwolania = pobierz_odwolania(soup_artykul)
                 kategorie = pobierz_kategorie(soup_artykul)
 
+                # Poprawka: Upewnienie się, że dane są formatowane zgodnie z oczekiwaniami
                 print(" | ".join(tytuly) if tytuly else "")
                 print(" | ".join(obrazy) if obrazy else "")
                 print(" | ".join(odwolania) if odwolania else "")
@@ -41,7 +42,7 @@ def pobierz_tytuly(soup):
     if tresc_div:
         links = tresc_div.select('a:not(.extiw)')
         tytuly = [link.get('title') for link in links if link.get('title') and link.get_text(strip=True)]
-        return list(dict.fromkeys(tytuly))[:5]
+        return list(dict.fromkeys(tytuly))[:5]  # Zwraca tylko pierwsze 5 tytułów
     return []
 
 def pobierz_adresy_obrazow(soup):
@@ -63,15 +64,13 @@ def pobierz_odwolania(soup):
         if link and link.get('href'):
             odwolania.append(link.get('href'))
 
-    return list(dict.fromkeys(odwolania))[:3]
+    return list(dict.fromkeys(odwolania))[:3]  # Zwraca tylko pierwsze 3 odwołania
 
 def pobierz_kategorie(soup):
     kategorie_div = soup.find("div", id="mw-normal-catlinks")
     if kategorie_div:
-        return [kat.get_text() for kat in kategorie_div.find_all("a")[1:4]]
+        return [kat.get_text() for kat in kategorie_div.find_all("a")[1:4]]  # Pomija pierwszą kategorię ("Strona główna kategorii")
     return []
 
 if __name__ == "__main__":
     wyszukaj_kategorie()
-
-
