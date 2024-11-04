@@ -1,74 +1,67 @@
 import requests
 from bs4 import BeautifulSoup
+import re
 
-def format_output(elements, delimiter=" | "):
-    return delimiter.join(elements)
+def pobierz_html(adres):
+    odpowiedz = requests.get(adres)
+    return odpowiedz.text if odpowiedz.status_code == 200 else None
 
-wiki_name = input()
-wiki_name = wiki_name.replace(" ", "_")
-url = "https://pl.wikipedia.org/wiki/Kategoria:" + wiki_name
-response = requests.get(url)
+def wyszukaj_artykuly_z_kategorii(nazwa_kategorii):
+    adres_bazowy = "https://pl.wikipedia.org/wiki/Kategoria:"
+    pelny_adres = adres_bazowy + nazwa_kategorii.replace(' ', '_')
+    html = pobierz_html(pelny_adres)
 
-if response.status_code == 200:
-    soup = BeautifulSoup(response.text, "html.parser")
-    mw_pages_div = soup.find("div", id="mw-pages")
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        sekcja_stron = soup.find("div", id="mw-pages")
 
-    if mw_pages_div:
-        articles = []
-        links = mw_pages_div.find_all("a")
+        if sekcja_stron:
+            artykuly = [{"url": "https://pl.wikipedia.org" + link['href'], "nazwa": link['title']}
+                        for link in sekcja_stron.find_all("a", href=re.compile("^/wiki/[^:]+$")) if "title" in link.attrs]
 
-        for link in links:
-            if "title" in link.attrs:
-                article_url = link["href"]
-                article_name = link["title"]
-                articles.append({"url": article_url, "name": article_name})
+            return artykuly[:2]
+    return []
 
-        for i in range(2):
-            if i < len(articles):
-                article = articles[i]
-                article_url = "https://pl.wikipedia.org" + article["url"]
-                article_response = requests.get(article_url)
-                article_soup = BeautifulSoup(article_response.text, "html.parser")
-                titles = []
-                div_container = article_soup.find('div', {'id': 'mw-content-text', 'class': 'mw-body-content'})
+def pobierz_dane_z_artykulu(adres_artykulu):
+    html = pobierz_html(adres_artykulu)
+    if not html:
+        return {}
 
-                if div_container:
-                    links = div_container.select('a:not(.extiw)')
-                    for link in links:
-                        title = link.get('title')
-                        text = link.get_text(strip=True)
-                        if title and text:
-                            titles.append(title)
-                            if len(titles) == 5:
-                                break
+    soup = BeautifulSoup(html, 'html.parser')
+    dane = {}
 
-                content_text_div = article_soup.find("div", {"class": "mw-content-ltr mw-parser-output"})
-                images = content_text_div.find_all("img", src=True) if content_text_div else []
-                image_urls = [img["src"] for img in images[:3]]
+    tresc_artykulu = soup.find('div', {'id': 'mw-content-text'})
+    if tresc_artykulu:
+        tytuly = [link.get('title') for link in tresc_artykulu.select('a:not(.extiw)')
+                  if link.get('title') and link.get_text(strip=True)]
+        dane['tytuly'] = list(dict.fromkeys(tytuly))[:5]
 
-                h2_przypisy = article_soup.find('span', {"id": "Przypisy"})
-                if h2_przypisy:
-                    references = h2_przypisy.find_next("ol", {"class": "references"})
-                    external_links = references.find_all('a', {"class": 'external text'}) if references else []
-                    reference_urls = [link['href'].replace("&", "&amp;") for link in external_links[:3]]
-                else:
-                    reference_urls = []
+    div_zawartosc = soup.find("div", {"class": "mw-content-ltr mw-parser-output"})
+    dane['obrazki'] = ["https:" + img["src"] for img in div_zawartosc.find_all("img", src=True)[:3]] if div_zawartosc else []
 
-                categories = article_soup.find("div", {"id": "mw-normal-catlinks"})
-                category_names = [cat.get_text() for cat in categories.find_all("a")[1:4]] if categories else []
+    zrodla = soup.find_all("li", {"id": lambda x: x and x.startswith("cite")})
+    odwolania = [link['href'] for link in (elem.find('a', class_='external text') for elem in zrodla) if link and link.get('href')]
+    dane['odwolania'] = list(dict.fromkeys(odwolania))[:3]
 
-                formatted_title = format_output(titles)
-                formatted_image_url = format_output(image_urls)
-                formatted_reference_url = format_output(reference_urls)
-                formatted_category_name = format_output(category_names)
+    kategorie_div = soup.find("div", {"id": "mw-normal-catlinks"})
+    if kategorie_div:
+        dane['kategorie'] = [kat.get_text() for kat in kategorie_div.find_all("a")[1:4]]
 
-                print(formatted_title)
-                print(formatted_image_url)
-                print(formatted_reference_url)
-                print(formatted_category_name)
-            else:
-                print(f"Article {i + 1}: No information")
-    else:
-        print("No mw-pages div")
-else:
-    print(f"Status code: {response.status_code}")
+    return dane
+
+def main():
+    kategoria = input("Podaj nazwę kategorii Wikipedii: ")
+    artykuly = wyszukaj_artykuly_z_kategorii(kategoria)
+
+    for artykul in artykuly:
+        print(f"\nDane dla artykułu: {artykul['url']}")
+        dane = pobierz_dane_z_artykulu(artykul['url'])
+
+        print("Nazwy artykułów:", " | ".join(dane.get('tytuly', [])))
+        print("Adresy obrazków:", " | ".join(dane.get('obrazki', [])))
+        print("Źródła zewnętrzne:", " | ".join(dane.get('odwolania', [])))
+        print("Kategorie:", " | ".join(dane.get('kategorie', [])))
+
+if __name__ == "__main__":
+    main()
+
