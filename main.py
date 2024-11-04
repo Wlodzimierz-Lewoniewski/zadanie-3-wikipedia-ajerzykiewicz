@@ -27,10 +27,9 @@ def wyszukaj_kategorie():
                 odwolania = pobierz_odwolania(soup_artykul)
                 kategorie = pobierz_kategorie(soup_artykul)
 
-                # Poprawka: Upewnienie się, że dane są formatowane zgodnie z oczekiwaniami
-                print(" | ".join(tytuly) if tytuly else "")
+                print(" | ".join(tytuly).replace("&", "&amp;") if tytuly else "")
                 print(" | ".join(obrazy) if obrazy else "")
-                print(" | ".join(odwolania) if odwolania else "")
+                print(" | ".join(odwolania).replace("&", "&amp;") if odwolania else "")
                 print(" | ".join(kategorie) if kategorie else "")
         else:
             print("Brak stron w tej kategorii.")
